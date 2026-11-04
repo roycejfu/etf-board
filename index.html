@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>【Royce】重点ETF资金看板</title>
+<script src="https://cdn.jsdelivr.net/npm/echarts@5.5.0/dist/echarts.min.js"></script>
+<script>
+  window.SNAP = new URLSearchParams(location.search).get('d');
+  document.write('<script src="' + (window.SNAP ? 'archive/' + window.SNAP + '.js' : 'board_data.js') + '?v=' + Date.now() + '"><\/script>');
+  document.write('<script src="history.js?v=' + Date.now() + '"><\/script>');
+</script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;font-family:-apple-system,BlinkMacSystemFont,"PingFang SC","Microsoft YaHei",sans-serif;background:#f4f6f9;color:#1f2d3d}
+  .wrap{max-width:1180px;margin:0 auto;padding:22px 18px 40px}
+  header{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:20px 24px;margin-bottom:16px;box-shadow:0 8px 32px rgba(31,45,61,.05)}
+  .brand{font-size:12px;letter-spacing:1px;color:#98a4b3;margin-bottom:6px}
+  h1{font-size:21px;margin:0 0 6px;font-weight:600}
+  .sub{font-size:13px;color:#7a8899;line-height:1.7}
+  .kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px;margin-top:14px}
+  .kpi{background:#fafbfc;border:1px solid #eef1f5;border-radius:10px;padding:10px 14px}
+  .kpi .l{font-size:12px;color:#7a8899}.kpi .v{font-size:20px;font-weight:600;margin-top:2px}
+  .kpi .s{font-size:11.5px;color:#98a4b3;margin-top:2px}
+  .sec{background:#fff;border:1px solid #e3e8ef;border-radius:14px;padding:18px 20px;margin-bottom:16px}
+  .sec>h2{font-size:16px;margin:0 0 4px;font-weight:600;border-left:4px solid #d93630;padding-left:10px}
+  .note{font-size:12.5px;color:#7a8899;line-height:1.75;margin:6px 0 10px}
+  .note b{color:#4b5b6c}
+  .bar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;font-size:13px;color:#4b5b6c;margin:6px 0 4px}
+  .tag{display:inline-block;padding:2px 8px;border-radius:5px;background:#fff1f0;color:#d93630;font-size:12px}
+  .tag.y{background:#fff7e6;color:#a56a00}.tag.g{background:#eef7f1;color:#1a8f52}
+  button{height:30px;padding:0 14px;border:1px solid #d7dfe8;border-radius:7px;background:#fff;cursor:pointer;font-family:inherit;font-size:13px;color:#1f2d3d}
+  button:hover{border-color:#d93630;color:#d93630}
+  button.pri{background:#d93630;color:#fff;border-color:#d93630}
+  select{height:30px;border:1px solid #d7dfe8;border-radius:7px;padding:0 8px;font-family:inherit}
+  .grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .ct{font-size:13.5px;font-weight:600;margin:12px 0 2px;color:#1f2d3d}
+  .chart{width:100%;height:320px}
+  .chart.tall{height:360px}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th{background:#f7f9fb;color:#4b5b6c;font-weight:500;padding:8px 8px;border-bottom:1px solid #e3e8ef;text-align:right;white-space:nowrap;position:sticky;top:0}
+  td{padding:7px 8px;border-bottom:1px solid #f0f2f5;text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums}
+  th:nth-child(-n+2),td:nth-child(-n+2){text-align:left}
+  .amtcell{position:relative}
+  .amtcell i{position:absolute;left:0;top:4px;bottom:4px;background:rgba(59,125,216,.16);border-radius:3px;z-index:0}
+  .amtcell span{position:relative;z-index:1}
+  .up{color:#d93630}.dn{color:#1a8f52}
+  .est{font-size:10px;color:#a56a00;margin-left:2px}
+  .tbl-wrap{overflow:auto;max-height:620px;border:1px solid #eef1f5;border-radius:8px}
+  .heat td{text-align:center}.heat th{text-align:center}
+  .heat td:first-child,.heat th:first-child{text-align:left}
+  .ins{background:#fff;border:1px solid #e3e8ef;border-top:4px solid #d93630;border-radius:14px;padding:18px 22px;margin-bottom:16px}
+  .ins-top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
+  .ins h2{font-size:17px;margin:0;font-weight:600}
+  .stance{display:inline-block;margin:10px 0 4px;padding:4px 10px;border-radius:6px;background:#fff1f0;color:#b8261f;font-size:13px;font-weight:600}
+  .ins .hl{font-size:15px;line-height:1.7;font-weight:600;margin:6px 0 10px;color:#1f2d3d}
+  .ins ul{margin:0;padding:0;list-style:none}
+  .ins li{font-size:13.5px;line-height:1.8;color:#334354;padding:6px 0;border-bottom:1px dashed #eef1f5;display:flex;gap:10px}
+  .ins li b{flex:0 0 84px;color:#d93630;font-weight:600}
+  .concl{margin-top:12px;background:#fafbfc;border:1px solid #eef1f5;border-radius:10px;padding:12px 14px;font-size:13.5px;line-height:1.85}
+  .concl .t{font-weight:600;margin-bottom:4px}
+  .watch{margin-top:10px;font-size:13px;line-height:1.8;color:#4b5b6c}
+  .watch ol{margin:4px 0 0 18px;padding:0}
+  .snapbar{display:none;background:#fff7e6;border:1px solid #ffe2a8;color:#a56a00;border-radius:10px;padding:8px 14px;margin-bottom:12px;font-size:13px}
+  .snapbar a{color:#d93630}
+  @media (max-width:520px){.ins li{flex-direction:column;gap:0}.ins li b{flex:none}}
+  footer{font-size:12px;color:#a6b0bd;text-align:center;line-height:1.8;margin-top:10px}
+  @media (max-width:820px){.grid2{grid-template-columns:1fr}.chart{height:280px}.wrap{padding:12px 8px}.sec{padding:14px 12px}}
+</style>
+</head>
+<body>
+<div class="wrap">
+<div class="snapbar" id="snapbar"></div>
+<header>
+  <div class="brand">ETF FUND FLOW BOARD · 个人研究</div>
+  <h1>【Royce】重点ETF资金看板</h1>
+  <div class="sub">跟踪 20 只核心宽基 ETF（沪深300 / A500 / 科创50 / 创业板 / 中证500 / 中证1000 / 上证50 等）的盘中量能、申赎净流入与托底信号。
+    <br>数据更新：<b id="upd"></b>　份额最新日：<b id="sday"></b></div>
+  <div class="kpis" id="kpis"></div>
+</header>
+
+<div class="ins" id="ins">
+  <div class="ins-top"><h2>观察与结论 <span style="font-size:12px;color:#98a4b3;font-weight:400" id="insDate"></span></h2>
+    <div style="font-size:13px;color:#4b5b6c">历史：<select id="selHist"></select></div></div>
+  <div class="stance" id="insStance"></div>
+  <div class="hl" id="insHl"></div>
+  <ul id="insPts"></ul>
+  <div class="concl"><div class="t">结论</div><div id="insConcl"></div></div>
+  <div class="watch" id="insWatch"></div>
+</div>
+
+<!-- 第一部分 -->
+<div class="sec">
+  <h2>第一部分 · 盘中分钟观测</h2>
+  <div class="bar"><span class="tag" id="mdate">--</span><span id="mstat">加载中…</span>
+    <button class="pri" id="btnRefresh">立即刷新</button><button id="btnAuto">暂停自动刷新</button></div>
+  <div class="grid2">
+    <div><div class="ct">20只ETF分钟成交额与上证综指分时</div><div class="chart" id="cMin"></div></div>
+    <div><div class="ct">20只ETF当日分钟累计成交额（亿元）</div><div class="chart" id="cCum"></div></div>
+  </div>
+  <div class="note"><b>口径说明</b>：柱状图为 20 只 ETF 每分钟二级市场成交金额加总；折线为上证综指分钟点位，虚线为上一交易日收盘。横轴固定 09:30~15:00 全时段，交易时段每 60 秒自动刷新，非交易时段展示最近一个交易日。累计图对比「近 N 日均值」（N 为已归档天数，最多 20 日）。</div>
+
+  <div class="ct">单只ETF当日表现（按成交额降序，条形背景 = 成交额 / 当日最大值）</div>
+  <div class="tbl-wrap"><table id="tblEtf"></table></div>
+  <div class="note">量比 = 当日成交额 / 近20日日均成交额。净流入（申赎口径）=（当日份额 − 前日份额）× 当日收盘价，单位亿元，<span class="up">红=净申购</span> / <span class="dn">绿=净赎回</span>。<span class="est">估</span> 表示深市 ETF 2025-10 以后的份额为估算值（见页尾数据说明）。</div>
+
+  <div class="ct" style="margin-top:16px">20大ETF放量案例 · 量能与上证综指（15分钟均值）</div>
+  <div class="bar">选择交易日：<select id="selCase"></select><span id="caseInfo" class="note" style="margin:0"></span></div>
+  <div class="chart" id="cCase"></div>
+</div>
+
+<!-- 第二部分 -->
+<div class="sec">
+  <h2>第二部分 · ETF托底信号</h2>
+  <div class="note" id="tdNote"></div>
+  <div class="bar"><span class="tag y" id="tdToday"></span><span class="tag" id="tdLast"></span></div>
+  <div class="ct" id="tdT1"></div><div class="chart" id="cTdAmt"></div>
+  <div class="ct" id="tdT2"></div><div class="chart" id="cTdIn"></div>
+  <div class="note"><b>方法说明</b>：成交额图 = 托底日 + 最近 3 个交易日（今日为实时/收盘值）；净流入图 = 托底日 + 最近 3 个交易日（今日份额尚未公布时显示「待公布」）。虚线为最新柱的数值水平线，用于直观比较当前力度与历史托底日。</div>
+</div>
+
+<!-- 第三部分 -->
+<div class="sec">
+  <h2>第三部分 · 历史量能与申赎</h2>
+  <div class="ct">20只ETF日度成交额与上证综指</div><div class="chart tall" id="cHAmt"></div>
+  <div class="ct">20只ETF日度净流入（申赎口径）与上证综指</div><div class="chart tall" id="cHIn"></div>
+</div>
+
+<!-- 第四部分 -->
+<div class="sec">
+  <h2>第四部分 · 全市场宽基ETF资金</h2>
+  <div class="note" id="brNote"></div>
+  <div class="ct">2026年以来全市场宽基ETF日度净流入（按跟踪指数）与累计净流入</div><div class="chart tall" id="cBroad"></div>
+  <div class="ct">最近一个月 · 各类宽基ETF日度净流入（亿元，<span class="up">红=净申购</span> / <span class="dn">绿=净赎回</span>，颜色深浅按当列相对大小）</div>
+  <div class="tbl-wrap"><table class="heat" id="tblHeat"></table></div>
+</div>
+
+<div class="sec">
+  <h2>数据说明</h2>
+  <div class="note">
+    <b>份额</b>：沪市 ETF 取上交所官方「ETF 规模」日度份额；深市 ETF 在 2025-09-30 前取东方财富场内流通份额，之后由「成交量 ÷ 换手率」反推前一日份额，并以两端精确份额（2025-09-30 东财 / 最新日东财快照）做比例锚定——此部分为<b>估算值</b>，单日误差约 ±0.2%~1%（换手率越低误差越大，如嘉实沪深300ETF）。<br>
+    <b>行情</b>：日线成交额来自腾讯行情；盘中分钟数据来自东方财富（浏览器端实时拉取）。<br>
+    <b>校验</b>：第四部分「东财宽基口径」为东方财富 ETF 申赎专题的宽基汇总估算值，可与自算合计相互印证。份额折算/拆分日的份额跳变已自动剔除。<br>
+    <b>托底日阈值与剔除窗口</b>沿用东财策略金科看板的定义。
+  </div>
+</div>
+<footer>仅供个人研究参考，不构成投资建议。数据自动生成，可能存在延迟或误差。</footer>
+</div>
+
+<script>
+const B = window.BOARD || {};
+const RED = '#d93630', GREEN = '#1a8f52', BLUE = '#3b7dd8', YEL = '#f0b429', IDX = '#e07b00', GREY = '#98a4b3';
+const $ = id => document.getElementById(id);
+const fmt = (v, d = 1) => v == null || isNaN(v) ? '--' : (+v).toLocaleString('zh-CN', {minimumFractionDigits: d, maximumFractionDigits: d});
+const sgn = (v, d = 2) => v == null || isNaN(v) ? '--' : (v > 0 ? '+' : '') + fmt(v, d);
+const cls = v => v > 0 ? 'up' : v < 0 ? 'dn' : '';
+const charts = {};
+function chart(id) { if (!charts[id]) charts[id] = echarts.init($(id)); return charts[id]; }
+window.addEventListener('resize', () => Object.values(charts).forEach(c => c.resize()));
+const baseGrid = {left: 54, right: 58, top: 36, bottom: 30};
+const axisStyle = {axisLine: {lineStyle: {color: '#c9d1db'}}, axisLabel: {color: '#4b5b6c', fontSize: 11}, splitLine: {lineStyle: {color: '#eef1f5'}}};
+
+// 09:30~15:00 固定网格
+const GRID = [];
+(function () {
+  const add = (h1, m1, h2, m2) => { for (let t = h1 * 60 + m1; t <= h2 * 60 + m2; t++) GRID.push(String(Math.floor(t / 60)).padStart(2, '0') + ':' + String(t % 60).padStart(2, '0')); };
+  add(9, 30, 11, 30); add(13, 1, 15, 0);
+})();
+
+$('upd').textContent = B.updated || '--';
+$('sday').textContent = (B.last_share_day || '--') + '（T-1，交易所晚间公布）';
+
+// ---------------- 盘中：实时拉取 ----------------
+let live = null, autoOn = true, timer = null;
+const etfs = B.etfs || [];
+async function fetchJSON(u) { const r = await fetch(u); return r.json(); }
+async function loadLive() {
+  $('mstat').textContent = '拉取实时数据…';
+  try {
+    if (window.SNAP) throw new Error('snapshot');
+    const f2 = 'fields1=f1,f2,f3,f4,f5,f6,f7,f8&fields2=f51,f53,f57&iscr=0&ndays=1';
+    const tasks = etfs.map(e => fetchJSON(`https://push2.eastmoney.com/api/qt/stock/trends2/get?${f2}&secid=${e.secid}`));
+    tasks.push(fetchJSON(`https://push2.eastmoney.com/api/qt/stock/trends2/get?${f2}&secid=1.000001`));
+    tasks.push(fetchJSON(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f6,f12,f14,f18&secids=${etfs.map(e => e.secid).join(',')}`));
+    const res = await Promise.all(tasks);
+    const q = {}; (res.pop().data.diff || []).forEach(x => q[x.f12] = x);
+    const ix = res.pop().data;
+    const amt = {}; let date = null;
+    res.forEach(r => (r.data.trends || []).forEach(t => { const [ts, , a] = t.split(','); const [d, hm] = ts.split(' '); date = d; amt[hm] = (amt[hm] || 0) + (+a) / 1e8; }));
+    const idx = {}; (ix.trends || []).forEach(t => { const [ts, c] = t.split(','); idx[ts.split(' ')[1]] = +c; });
+    live = {date, amt, idx, pre: ix.preClose, quotes: q, ok: true};
+    const now = new Date(); const hm = now.toTimeString().slice(0, 5);
+    const trading = now.getDay() > 0 && now.getDay() < 6 && ((hm >= '09:25' && hm <= '11:31') || (hm >= '12:59' && hm <= '15:01'));
+    $('mstat').textContent = `更新于 ${now.toTimeString().slice(0, 8)}` + (trading ? '（交易中，60秒自动刷新）' : '（非交易时段）');
+  } catch (e) {
+    const m = (B.mraw || []).slice(-1)[0];
+    if (m) {
+      const amt = {}, idx = {}; m.t.forEach((t, i) => { amt[t] = m.amt[i]; idx[t] = m.idx[i]; });
+      live = {date: m.date, amt, idx, pre: null, quotes: {}, ok: false};
+    }
+    $('mstat').textContent = window.SNAP ? `历史快照（${window.SNAP} 收盘）` : '实时接口不可用，展示归档数据';
+  }
+  renderIntraday(); renderTable(); renderKpi(); renderTuodi();
+}
+
+function renderIntraday() {
+  if (!live) return;
+  $('mdate').textContent = live.date + ' 分时';
+  const bars = GRID.map(t => live.amt[t] != null ? +live.amt[t].toFixed(3) : null);
+  const line = GRID.map(t => live.idx[t] ?? null);
+  const pre = live.pre;
+  chart('cMin').setOption({
+    tooltip: {trigger: 'axis', valueFormatter: v => v == null ? '--' : fmt(v, 2)},
+    legend: {data: ['20只ETF分钟成交额合计', '上证综指'], top: 0, textStyle: {fontSize: 12}},
+    grid: baseGrid,
+    xAxis: {type: 'category', data: GRID, ...axisStyle, axisLabel: {...axisStyle.axisLabel, interval: 39}},
+    yAxis: [{type: 'value', name: '亿元', ...axisStyle}, {type: 'value', name: '上证综指(点)', scale: true, ...axisStyle, splitLine: {show: false}}],
+    series: [
+      {name: '20只ETF分钟成交额合计', type: 'bar', data: bars, itemStyle: {color: BLUE}, barCategoryGap: '20%'},
+      {name: '上证综指', type: 'line', yAxisIndex: 1, data: line, showSymbol: false, lineStyle: {color: IDX, width: 1.6}, itemStyle: {color: IDX},
+        markLine: pre ? {symbol: 'none', silent: true, lineStyle: {type: 'dashed', color: GREY}, label: {formatter: '昨收 ' + pre, color: GREY, fontSize: 11}, data: [{yAxis: pre}]} : undefined}
+    ]
+  }, true);
+  // 累计 vs 近N日均值
+  let acc = 0; const cum = GRID.map(t => { if (live.amt[t] == null) return null; acc += live.amt[t]; return +acc.toFixed(1); });
+  const hist = (B.mraw || []).filter(m => m.date !== live.date).slice(-20);
+  const avg = GRID.map(t => {
+    const vals = hist.map(m => { let s = 0, hit = false; for (let i = 0; i < m.t.length && m.t[i] <= t; i++) { s += m.amt[i]; hit = true; } return hit ? s : null; }).filter(v => v != null);
+    return vals.length ? +(vals.reduce((a, b) => a + b, 0) / vals.length).toFixed(1) : null;
+  });
+  chart('cCum').setOption({
+    tooltip: {trigger: 'axis', valueFormatter: v => v == null ? '--' : fmt(v, 1) + ' 亿'},
+    legend: {data: ['今日 ' + live.date, `近${hist.length}日均值`], top: 0, textStyle: {fontSize: 12}},
+    grid: baseGrid,
+    xAxis: {type: 'category', data: GRID, ...axisStyle, axisLabel: {...axisStyle.axisLabel, interval: 39}},
+    yAxis: {type: 'value', name: '累计成交额(亿元)', ...axisStyle},
+    series: [
+      {name: '今日 ' + live.date, type: 'line', data: cum, showSymbol: false, lineStyle: {color: RED, width: 2.2}, itemStyle: {color: RED}, areaStyle: {color: 'rgba(217,54,48,.07)'}},
+      {name: `近${hist.length}日均值`, type: 'line', data: avg, showSymbol: false, lineStyle: {color: GREY, width: 1.6, type: 'dashed'}, itemStyle: {color: GREY}}
+    ]
+  }, true);
+}
+
+function todayAmtTotal() {
+  if (!live) return null;
+  return Object.values(live.amt).reduce((a, b) => a + b, 0);
+}
+
+function renderTable() {
+  const q = live ? live.quotes : {};
+  const rows = etfs.map(e => {
+    let x = q[e.code];
+    if (!x && e.q && live && e.q.date === live.date) x = {f6: e.q.amt * 1e8, f3: e.q.pct};
+    x = x || {};
+    const amt = x.f6 ? x.f6 / 1e8 : null;
+    return {...e, amt, pct: x.f3, price: x.f2, vr: amt && e.avg20 ? amt / e.avg20 : null};
+  }).sort((a, b) => (b.amt || 0) - (a.amt || 0));
+  const mx = Math.max(...rows.map(r => r.amt || 0), 1);
+  const est = r => r.est ? '<span class="est">估</span>' : '';
+  let h = '<tr><th>代码</th><th>名称</th><th>跟踪指数</th><th>当日成交额(亿)</th><th>涨跌幅</th><th>量比</th><th>20日均成交(亿)</th><th>最新份额(亿份)</th><th>T-1净流入</th><th>近5日净流入</th><th>近20日净流入</th></tr>';
+  rows.forEach(r => {
+    h += `<tr><td>${r.code}</td><td>${r.name}</td><td>${r.cat}</td>
+      <td class="amtcell"><i style="width:${(r.amt || 0) / mx * 100}%"></i><span>${fmt(r.amt, 2)}</span></td>
+      <td class="${cls(r.pct)}">${r.pct == null ? '--' : sgn(r.pct, 2) + '%'}</td>
+      <td style="${r.vr > 1.5 ? 'color:#d93630;font-weight:600' : ''}">${fmt(r.vr, 2)}</td>
+      <td>${fmt(r.avg20, 2)}</td><td>${fmt(r.shares, 2)}${est(r)}</td>
+      <td class="${cls(r.in1)}">${sgn(r.in1)}</td><td class="${cls(r.in5)}">${sgn(r.in5)}</td><td class="${cls(r.in20)}">${sgn(r.in20)}</td></tr>`;
+  });
+  const sum = k => rows.reduce((a, r) => a + (r[k] || 0), 0);
+  h += `<tr style="font-weight:600;background:#fafbfc"><td>合计</td><td>20只</td><td></td><td>${fmt(sum('amt'), 1)}</td><td></td><td>${fmt(sum('amt') / sum('avg20'), 2)}</td><td>${fmt(sum('avg20'), 1)}</td><td>${fmt(sum('shares'), 0)}</td>
+    <td class="${cls(sum('in1'))}">${sgn(sum('in1'), 1)}</td><td class="${cls(sum('in5'))}">${sgn(sum('in5'), 1)}</td><td class="${cls(sum('in20'))}">${sgn(sum('in20'), 1)}</td></tr>`;
+  $('tblEtf').innerHTML = h;
+}
+
+// ---------------- KPI ----------------
+function renderKpi() {
+  const d = B.daily, n = d.dates.length;
+  const li = d.dates.indexOf(B.last_share_day);
+  const inLast = d.in20[li];
+  const amtToday = todayAmtTotal();
+  const avg20 = (B.etfs || []).reduce((a, e) => a + (e.avg20 || 0), 0);
+  const in5 = d.in20.slice(li - 4, li + 1).reduce((a, b) => a + (b || 0), 0);
+  const in20 = d.in20.slice(li - 19, li + 1).reduce((a, b) => a + (b || 0), 0);
+  const emB = B.broad.em_broad[B.last_share_day], emH = B.broad.em_huijin[B.last_share_day];
+  $('kpis').innerHTML = [
+    ['今日20只成交额' + (live ? `（${live.date.slice(5)}）` : ''), fmt(amtToday, 1) + ' 亿', `20日均 ${fmt(avg20, 0)} 亿 · 量比 ${fmt(amtToday / avg20, 2)}`, ''],
+    [`20只净流入（${(B.last_share_day || '').slice(5)}，T-1）`, sgn(inLast, 1) + ' 亿', '申赎口径', cls(inLast)],
+    ['20只近5日累计净流入', sgn(in5, 1) + ' 亿', '截至 T-1', cls(in5)],
+    ['20只近20日累计净流入', sgn(in20, 1) + ' 亿', '截至 T-1', cls(in20)],
+    ['全市场宽基（东财口径，T-1）', sgn(emB, 1) + ' 亿', `其中「汇金」类 ${sgn(emH, 1)} 亿`, cls(emB)],
+  ].map(([l, v, s, c]) => `<div class="kpi"><div class="l">${l}</div><div class="v ${c}">${v}</div><div class="s">${s}</div></div>`).join('');
+}
+
+// ---------------- 放量案例 ----------------
+function renderCases() {
+  const cs = (B.cases || []).slice().sort((a, b) => b.date.localeCompare(a.date));
+  $('selCase').innerHTML = cs.map(c => `<option value="${c.date}">${c.date}（${fmt(c.total, 0)}亿）</option>`).join('');
+  const draw = () => {
+    const c = cs.find(x => x.date === $('selCase').value); if (!c) return;
+    const top = cs.slice().sort((a, b) => b.total - a.total)[0];
+    $('caseInfo').textContent = `全天 20 只合计 ${fmt(c.total, 1)} 亿；已归档 ${cs.length} 个交易日，最高为 ${top.date}（${fmt(top.total, 0)} 亿）`;
+    chart('cCase').setOption({
+      tooltip: {trigger: 'axis', valueFormatter: v => v == null ? '--' : fmt(v, 2)},
+      legend: {data: ['15分钟内平均每分钟成交额', '上证综指'], top: 0, textStyle: {fontSize: 12}},
+      grid: baseGrid,
+      xAxis: {type: 'category', data: c.t, ...axisStyle},
+      yAxis: [{type: 'value', name: '亿元/分钟', ...axisStyle}, {type: 'value', name: '上证综指', scale: true, ...axisStyle, splitLine: {show: false}}],
+      series: [{name: '15分钟内平均每分钟成交额', type: 'bar', data: c.amt, itemStyle: {color: BLUE}},
+        {name: '上证综指', type: 'line', yAxisIndex: 1, data: c.idx, lineStyle: {color: IDX}, itemStyle: {color: IDX}, symbolSize: 4}]
+    }, true);
+  };
+  $('selCase').onchange = draw; draw();
+}
+
+// ---------------- 托底信号 ----------------
+const EXCL = [['2024-09-24', '2024-10-18'], ['2026-01-14', '2026-01-30'], ['2026-02-02', '2026-02-02'], ['2026-02-13', '2026-02-13'], ['2026-02-26', '2026-02-26']];
+const inExcl = d => EXCL.some(([a, b]) => d >= a && d <= b);
+function renderTuodi() {
+  const dates = B.daily.dates.slice(), amtArr = B.daily.amt20.slice(), in20 = B.daily.in20.slice();
+  const d = {in20};
+  const tAmt = todayAmtTotal(), lastI = dates.length - 1;
+  if (live && tAmt) {
+    if (live.date === dates[lastI]) amtArr[lastI] = +tAmt.toFixed(1);
+    else if (live.date > dates[lastI]) { dates.push(live.date); amtArr.push(+tAmt.toFixed(1)); in20.push(null); }
+  }
+  const tuo = dates.map((x, i) => i).filter(i => in20[i] != null && in20[i] > 100 && !inExcl(dates[i]));
+  const recentIdx = dates.map((x, i) => i).slice(-3);
+  const ids = [...new Set([...tuo, ...recentIdx])].sort((a, b) => a - b);
+  const rec = new Set(recentIdx);
+  const nT = tuo.length;
+  $('tdNote').innerHTML = `<b>托底日</b> = 20只ETF单日净流入 &gt; 100 亿（申赎口径），剔除 2024-09-24~10-18 狂热申购窗与 2026-01-14~01-30 及 02-02/13/26 抛售窗，共 <b>${nT}</b> 天。成交额图<span style="color:${BLUE}">蓝柱</span> / 净流入图<span style="color:${RED}">红柱</span> = 托底日，<span style="color:#c58a00">黄柱</span> = 最近 3 个交易日。`;
+  const li = dates.indexOf(B.last_share_day);
+  $('tdToday').textContent = `今日成交额（${dates[dates.length - 1]}${live && live.ok ? '，实时' : ''}）：${fmt(amtArr[amtArr.length - 1], 1)} 亿`;
+  $('tdLast').textContent = `最新净流入（${B.last_share_day}，T-1）：${fmt(d.in20[li], 1)} 亿 ｜ 成交额 ${fmt(amtArr[li], 1)} 亿`;
+  $('tdT1').textContent = `日度成交额：${nT} 个托底日（蓝）+ 最近 3 个交易日（黄）`;
+  $('tdT2').textContent = `日度净流入：${nT} 个托底日（红）+ 最近 3 个交易日（黄）`;
+  const cats = ids.map(i => dates[i]);
+  const mk = (arr, base) => ids.map(i => ({value: arr[i], itemStyle: {color: rec.has(i) ? YEL : base}}));
+  const lastAmt = amtArr[ids[ids.length - 1]];
+  const lastInIdx = [...ids].reverse().find(i => d.in20[i] != null);
+  const opt = (data, latest, name) => ({
+    tooltip: {trigger: 'axis', valueFormatter: v => v == null ? '待公布' : fmt(v, 1) + ' 亿'},
+    grid: {...baseGrid, right: 20, bottom: 56},
+    xAxis: {type: 'category', data: cats, ...axisStyle, axisLabel: {...axisStyle.axisLabel, rotate: 45}},
+    yAxis: {type: 'value', name: '亿元', ...axisStyle},
+    dataZoom: [{type: 'inside'}],
+    series: [{name, type: 'bar', data, barMaxWidth: 14,
+      label: {show: true, position: 'top', fontSize: 10, color: '#a56a00', formatter: p => rec.has(ids[p.dataIndex]) ? (p.value == null ? '待公布' : fmt(p.value, 0)) : ''},
+      markLine: {symbol: 'none', silent: true, lineStyle: {type: 'dashed', color: RED}, label: {formatter: '最新值 ' + fmt(latest, 1) + '亿', color: RED, position: 'insideStartTop'}, data: [{yAxis: latest}]}}]
+  });
+  chart('cTdAmt').setOption(opt(mk(amtArr, BLUE), lastAmt, '20只成交额'), true);
+  const inData = ids.map(i => ({value: d.in20[i], itemStyle: {color: rec.has(i) ? YEL : RED}}));
+  chart('cTdIn').setOption(opt(inData, d.in20[lastInIdx], '20只净流入'), true);
+}
+
+// ---------------- 历史 ----------------
+function renderHist() {
+  const d = B.daily;
+  const zoom = [{type: 'inside', start: 0, end: 100}, {type: 'slider', height: 18, bottom: 6}];
+  const common = (name, data, colorFn) => ({
+    tooltip: {trigger: 'axis', valueFormatter: v => v == null ? '--' : fmt(v, 1)},
+    legend: {data: [name, '上证综指'], top: 0, textStyle: {fontSize: 12}},
+    grid: {...baseGrid, bottom: 50},
+    xAxis: {type: 'category', data: d.dates, ...axisStyle},
+    yAxis: [{type: 'value', name: '亿元', ...axisStyle}, {type: 'value', name: '上证指数(点)', scale: true, ...axisStyle, splitLine: {show: false}}],
+    dataZoom: zoom,
+    series: [{name, type: 'bar', data: data.map(v => ({value: v, itemStyle: {color: colorFn(v)}})), barCategoryGap: '10%'},
+      {name: '上证综指', type: 'line', yAxisIndex: 1, data: d.sh, showSymbol: false, lineStyle: {color: IDX, width: 1.3}, itemStyle: {color: IDX}}]
+  });
+  chart('cHAmt').setOption(common('20只ETF日度成交额合计', d.amt20, () => BLUE));
+  chart('cHIn').setOption(common('20只ETF日度净流入', d.in20, v => v >= 0 ? RED : GREEN));
+}
+
+// ---------------- 全市场宽基 ----------------
+const PALETTE = ['#d93630', '#3b7dd8', '#f0b429', '#1a8f52', '#8e5cd9', '#e07b00', '#17a2b8', '#c2185b', '#6d4c41', '#7cb342', '#5c6bc0', '#ff8a65', '#90a4ae', '#26a69a', '#bdbdbd'];
+function renderBroad() {
+  const br = B.broad, ds = br.dates, cats = br.cats, keys = Object.keys(cats);
+  const tot = ds.map((x, i) => keys.reduce((a, k) => a + cats[k][i], 0));
+  let acc = 0; const cum = tot.map(v => +(acc += v).toFixed(1));
+  $('brNote').innerHTML = `口径：全市场规模 ≥5 亿元的宽基 ETF 共 <b>${br.universe_n}</b> 只，按跟踪指数归类；自 ${ds[0]} 起累计净流入 <b class="${cls(acc)}">${sgn(acc, 0)} 亿</b>。`;
+  chart('cBroad').setOption({
+    tooltip: {trigger: 'axis', valueFormatter: v => v == null ? '--' : fmt(v, 1)},
+    legend: {type: 'scroll', top: 0, textStyle: {fontSize: 11}},
+    grid: {...baseGrid, top: 46, bottom: 50, right: 66},
+    xAxis: {type: 'category', data: ds, ...axisStyle},
+    yAxis: [{type: 'value', name: '当日净流入(亿元)', ...axisStyle}, {type: 'value', name: '累计净流入(亿元)', ...axisStyle, splitLine: {show: false}}],
+    dataZoom: [{type: 'inside'}, {type: 'slider', height: 18, bottom: 6}],
+    series: [...keys.map((k, i) => ({name: k, type: 'bar', stack: 's', data: cats[k], itemStyle: {color: PALETTE[i % PALETTE.length]}})),
+      {name: '累计净流入', type: 'line', yAxisIndex: 1, data: cum, showSymbol: false, lineStyle: {color: '#1f2d3d', width: 2}, itemStyle: {color: '#1f2d3d'}}]
+  });
+  // 热力表：最近 ~22 个交易日
+  const n = ds.length, rng = [...Array(Math.min(22, n)).keys()].map(i => n - 1 - i);
+  const order = keys.slice().sort((a, b) => rng.reduce((s, i) => s + Math.abs(cats[b][i]), 0) - rng.reduce((s, i) => s + Math.abs(cats[a][i]), 0));
+  const cols = [['合计', i => tot[i], 1], ['东财宽基口径', i => br.em_broad[ds[i]], 1], ...order.map(k => [k, i => cats[k][i], 2])];
+  const colMax = cols.map(([, f]) => Math.max(...rng.map(i => Math.abs(f(i) || 0)), 1));
+  const bg = (v, m) => { if (v == null) return ''; const a = 0.06 + 0.62 * Math.min(1, Math.abs(v) / m); return `background:${v >= 0 ? `rgba(217,54,48,${a})` : `rgba(26,143,82,${a})`};${a > .45 ? 'color:#fff;' : ''}`; };
+  let h = '<tr><th>日期</th>' + cols.map(c => `<th>${c[0]}</th>`).join('') + '</tr>';
+  rng.forEach(i => { h += `<tr><td>${ds[i]}</td>` + cols.map(([, f, dg], j) => { const v = f(i); return `<td style="${bg(v, colMax[j])}">${sgn(v, dg)}</td>`; }).join('') + '</tr>'; });
+  $('tblHeat').innerHTML = h;
+}
+
+// ---------------- 观察与结论 ----------------
+function renderInsight() {
+  const I = B.insight;
+  const H = window.HISTORY || [];
+  $('selHist').innerHTML = '<option value="">最新</option>' + H.map(h => `<option value="${h.date}" ${h.date === window.SNAP ? 'selected' : ''}>${h.date}｜${(h.stance || '').slice(0, 18)}</option>`).join('');
+  $('selHist').onchange = e => { location.search = e.target.value ? '?d=' + e.target.value : ''; };
+  if (window.SNAP) { $('snapbar').style.display = 'block'; $('snapbar').innerHTML = `正在查看 <b>${window.SNAP}</b> 的历史快照（盘中数据为当日收盘归档，不再实时刷新）　<a href="./">返回最新 →</a>`; }
+  if (!I) { $('ins').style.display = 'none'; return; }
+  $('insDate').textContent = `${I.date}（量能截至 ${I.date}，申赎截至 ${I.share_day}）`;
+  $('insStance').textContent = I.stance || '';
+  $('insHl').textContent = I.headline || '';
+  $('insPts').innerHTML = (I.points || []).map(p => `<li><b>${p.tag}</b><span>${p.text}</span></li>`).join('');
+  $('insConcl').textContent = I.conclusion || '';
+  $('insWatch').innerHTML = I.watch && I.watch.length ? '<b>后续观察</b><ol>' + I.watch.map(w => `<li style="border:0;padding:0;display:list-item">${w}</li>`).join('') + '</ol>' : '';
+}
+
+// ---------------- 启动 ----------------
+renderInsight();
+renderHist(); renderBroad(); renderCases();
+loadLive();
+function schedule() {
+  clearInterval(timer);
+  if (autoOn) timer = setInterval(() => {
+    const now = new Date(), hm = now.toTimeString().slice(0, 5);
+    if (!window.SNAP && now.getDay() > 0 && now.getDay() < 6 && ((hm >= '09:25' && hm <= '11:31') || (hm >= '12:59' && hm <= '15:01'))) loadLive();
+  }, 60000);
+}
+schedule();
+$('btnRefresh').onclick = loadLive;
+$('btnAuto').onclick = () => { autoOn = !autoOn; $('btnAuto').textContent = autoOn ? '暂停自动刷新' : '恢复自动刷新'; schedule(); };
+</script>
+</body>
+</html>
