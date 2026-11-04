@@ -11,7 +11,7 @@
   python3 publish.py --push          # 另外推送微信
   python3 publish.py --no-git        # 仅本地生成
 """
-import json, os, subprocess, sys, glob
+import json, os, subprocess, sys, glob, time
 
 ROOT = os.path.dirname(os.path.abspath(__file__))
 ARCH = os.path.join(ROOT, "archive")
@@ -57,8 +57,13 @@ def main():
         if r.returncode and "nothing to commit" not in (r.stdout + r.stderr):
             die("commit 失败: " + r.stderr)
         for ref in ("main", "main:gh-pages"):
-            r = g("push", "-q", "origin", ref, "--force" if ref.endswith("gh-pages") else "-q")
-            if r.returncode:
+            for attempt in range(4):  # GitHub 偶发 5xx，退避重试
+                r = g("push", "-q", "origin", ref, "--force" if ref.endswith("gh-pages") else "-q")
+                if r.returncode == 0:
+                    break
+                print(f"[publish] push {ref} 第 {attempt + 1} 次失败，重试…")
+                time.sleep(15 * (attempt + 1))
+            else:
                 die(f"push {ref} 失败: " + r.stderr)
         st = g("status", "--porcelain").stdout.strip()
         if st:
