@@ -168,12 +168,19 @@ const GRID = [];
 })();
 
 $('upd').textContent = B.updated || '--';
-$('sday').textContent = (B.last_share_day || '--') + '（T-1，交易所晚间公布）';
+$('sday').textContent = (B.last_share_day || '--') + '（T-1，当日份额次一交易日才公布）';
 
 // ---------------- 盘中：实时拉取 ----------------
 let live = null, autoOn = true, timer = null;
 const etfs = B.etfs || [];
-async function fetchJSON(u) { const r = await fetch(u); return r.json(); }
+async function fetchJSON(u) { const r = await fetch(u, {signal: AbortSignal.timeout(10000)}); return r.json(); }
+function useArchive() {
+  const m = (B.mraw || []).slice(-1)[0];
+  if (!m) return;
+  const amt = {}, idx = {}; m.t.forEach((t, i) => { amt[t] = m.amt[i]; idx[t] = m.idx[i]; });
+  live = {date: m.date, amt, idx, pre: null, quotes: {}, ok: false};
+}
+function renderLive() { renderIntraday(); renderTable(); renderKpi(); renderTuodi(); }
 async function loadLive() {
   $('mstat').textContent = '拉取实时数据…';
   try {
@@ -193,14 +200,10 @@ async function loadLive() {
     const trading = now.getDay() > 0 && now.getDay() < 6 && ((hm >= '09:25' && hm <= '11:31') || (hm >= '12:59' && hm <= '15:01'));
     $('mstat').textContent = `更新于 ${now.toTimeString().slice(0, 8)}` + (trading ? '（交易中，60秒自动刷新）' : '（非交易时段）');
   } catch (e) {
-    const m = (B.mraw || []).slice(-1)[0];
-    if (m) {
-      const amt = {}, idx = {}; m.t.forEach((t, i) => { amt[t] = m.amt[i]; idx[t] = m.idx[i]; });
-      live = {date: m.date, amt, idx, pre: null, quotes: {}, ok: false};
-    }
+    useArchive();
     $('mstat').textContent = window.SNAP ? `历史快照（${window.SNAP} 收盘）` : '实时接口不可用，展示归档数据';
   }
-  renderIntraday(); renderTable(); renderKpi(); renderTuodi();
+  renderLive();
 }
 
 function renderIntraday() {
@@ -418,6 +421,7 @@ function renderInsight() {
 // ---------------- 启动 ----------------
 renderInsight();
 renderHist(); renderBroad(); renderCases();
+useArchive(); renderLive();
 loadLive();
 function schedule() {
   clearInterval(timer);
