@@ -247,7 +247,18 @@ def main(full=False):
                 if ts[:10] in extra:
                     sh[ts[:10]] = float(close)
         except Exception as e:
-            print("   指数补齐失败", e)
+            print("   指数补齐失败(东财)", e, "→ 改用腾讯实时行情")
+        if any(d not in sh for d in extra):
+            try:  # 备用源：腾讯实时行情，字段 3=现价，30=时间戳 YYYYMMDDhhmmss
+                req = urllib.request.Request("https://qt.gtimg.cn/q=sh000001", headers=UA)
+                with urllib.request.urlopen(req, timeout=15) as r:
+                    q = r.read().decode("gbk", "ignore").split('"')[1].split("~")
+                qd = f"{q[30][:4]}-{q[30][4:6]}-{q[30][6:8]}"
+                if qd in extra and float(q[3]) > 0:
+                    sh[qd] = float(q[3])
+                    print(f"   指数补齐(腾讯) {qd} {q[3]}")
+            except Exception as e:
+                print("   指数补齐失败(腾讯)", e)
 
     print("3) 份额")
     trade_days = sorted(d for d in sh if d >= HIST_START)
