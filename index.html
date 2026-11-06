@@ -139,7 +139,7 @@
   <h2>数据说明</h2>
   <div class="note">
     <b>份额</b>：沪市 ETF 取上交所官方「ETF 规模」日度份额；深市 ETF 在 2025-09-30 前取东方财富场内流通份额，之后由「成交量 ÷ 换手率」反推前一日份额，并以两端精确份额（2025-09-30 东财 / 最新日东财快照）做比例锚定——此部分为<b>估算值</b>，单日误差约 ±0.2%~1%（换手率越低误差越大，如嘉实沪深300ETF）。<br>
-    <b>行情</b>：日线成交额来自腾讯行情；盘中分钟数据来自东方财富（浏览器端实时拉取）。<br>
+    <b>行情</b>：日线成交额来自腾讯行情；盘中分钟数据浏览器端实时拉取（东方财富，不可用时自动切换腾讯；都失败时展示构建时快照）。<br>
     <b>校验</b>：第四部分「东财宽基口径」为东方财富 ETF 申赎专题的宽基汇总估算值，可与自算合计相互印证。份额折算/拆分日的份额跳变已自动剔除。<br>
     <b>托底日阈值与剔除窗口</b>沿用东财策略金科看板的定义。
   </div>
@@ -175,33 +175,61 @@ let live = null, autoOn = true, timer = null;
 const etfs = B.etfs || [];
 async function fetchJSON(u) { const r = await fetch(u, {signal: AbortSignal.timeout(10000)}); return r.json(); }
 function useArchive() {
-  const m = (B.mraw || []).slice(-1)[0];
-  if (!m) return;
+  // 优先用构建时抓到的当日盘中快照（mtoday），没有才退回最近一个已归档交易日
+  const m = (B.mtoday && B.mtoday.t && B.mtoday.t.length) ? B.mtoday : (B.mraw || []).slice(-1)[0];
+  if (!m) return false;
   const amt = {}, idx = {}; m.t.forEach((t, i) => { amt[t] = m.amt[i]; idx[t] = m.idx[i]; });
   live = {date: m.date, amt, idx, pre: null, quotes: {}, ok: false};
+  return m === B.mtoday;
+}
+async function loadEM() {
+  const f2 = 'fields1=f1,f2,f3,f4,f5,f6,f7,f8&fields2=f51,f53,f57&iscr=0&ndays=1';
+  const tasks = etfs.map(e => fetchJSON(`https://push2.eastmoney.com/api/qt/stock/trends2/get?${f2}&secid=${e.secid}`));
+  tasks.push(fetchJSON(`https://push2.eastmoney.com/api/qt/stock/trends2/get?${f2}&secid=1.000001`));
+  tasks.push(fetchJSON(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f6,f12,f14,f18&secids=${etfs.map(e => e.secid).join(',')}`));
+  const res = await Promise.all(tasks);
+  const q = {}; (res.pop().data.diff || []).forEach(x => q[x.f12] = x);
+  const ix = res.pop().data;
+  const amt = {}; let date = null;
+  res.forEach(r => (r.data.trends || []).forEach(t => { const [ts, , a] = t.split(','); const [d, hm] = ts.split(' '); date = d; amt[hm] = (amt[hm] || 0) + (+a) / 1e8; }));
+  const idx = {}; (ix.trends || []).forEach(t => { const [ts, c] = t.split(','); idx[ts.split(' ')[1]] = +c; });
+  if (!date || !Object.keys(idx).length) throw new Error('em empty');
+  return {date, amt, idx, pre: ix.preClose, quotes: q, ok: true, src: '东财'};
+}
+async function loadTX() {
+  // 腾讯分钟：累计成交额，逐分钟差分；13:00 为午间占位
+  const one = async sym => {
+    const d = (await fetchJSON(`https://web.ifzq.gtimg.cn/appstock/app/minute/query?code=${sym}`)).data[sym];
+    const ds = d.data.date, date = `${ds.slice(0, 4)}-${ds.slice(4, 6)}-${ds.slice(6)}`;
+    const amt = {}, px = {}; let prev = 0;
+    d.data.data.forEach(r => { const [hhmm, p, , a] = r.split(' '); const hm = hhmm.slice(0, 2) + ':' + hhmm.slice(2);
+      if (hm !== '13:00') { amt[hm] = Math.max(+a - prev, 0); px[hm] = +p; } prev = +a; });
+    return {date, amt, px, qt: d.qt[sym]};
+  };
+  const res = await Promise.all([...etfs.map(e => one((e.secid[0] === '1' ? 'sh' : 'sz') + e.code)), one('sh000001')]);
+  const ix = res.pop();
+  const amt = {}, q = {};
+  res.forEach((r, i) => {
+    const x = r.qt; q[etfs[i].code] = {f2: +x[3], f3: +x[32], f6: +x[37] * 1e4};
+    if (r.date !== ix.date) return;
+    Object.entries(r.amt).forEach(([hm, a]) => amt[hm] = (amt[hm] || 0) + a / 1e8);
+  });
+  if (!Object.keys(ix.px).length) throw new Error('tx empty');
+  return {date: ix.date, amt, idx: ix.px, pre: +ix.qt[4], quotes: q, ok: true, src: '腾讯'};
 }
 function renderLive() { renderIntraday(); renderTable(); renderKpi(); renderTuodi(); }
 async function loadLive() {
   $('mstat').textContent = '拉取实时数据…';
   try {
     if (window.SNAP) throw new Error('snapshot');
-    const f2 = 'fields1=f1,f2,f3,f4,f5,f6,f7,f8&fields2=f51,f53,f57&iscr=0&ndays=1';
-    const tasks = etfs.map(e => fetchJSON(`https://push2.eastmoney.com/api/qt/stock/trends2/get?${f2}&secid=${e.secid}`));
-    tasks.push(fetchJSON(`https://push2.eastmoney.com/api/qt/stock/trends2/get?${f2}&secid=1.000001`));
-    tasks.push(fetchJSON(`https://push2.eastmoney.com/api/qt/ulist.np/get?fltt=2&fields=f2,f3,f6,f12,f14,f18&secids=${etfs.map(e => e.secid).join(',')}`));
-    const res = await Promise.all(tasks);
-    const q = {}; (res.pop().data.diff || []).forEach(x => q[x.f12] = x);
-    const ix = res.pop().data;
-    const amt = {}; let date = null;
-    res.forEach(r => (r.data.trends || []).forEach(t => { const [ts, , a] = t.split(','); const [d, hm] = ts.split(' '); date = d; amt[hm] = (amt[hm] || 0) + (+a) / 1e8; }));
-    const idx = {}; (ix.trends || []).forEach(t => { const [ts, c] = t.split(','); idx[ts.split(' ')[1]] = +c; });
-    live = {date, amt, idx, pre: ix.preClose, quotes: q, ok: true};
+    try { live = await loadEM(); } catch (e1) { live = await loadTX(); }
     const now = new Date(); const hm = now.toTimeString().slice(0, 5);
     const trading = now.getDay() > 0 && now.getDay() < 6 && ((hm >= '09:25' && hm <= '11:31') || (hm >= '12:59' && hm <= '15:01'));
-    $('mstat').textContent = `更新于 ${now.toTimeString().slice(0, 8)}` + (trading ? '（交易中，60秒自动刷新）' : '（非交易时段）');
+    $('mstat').textContent = `更新于 ${now.toTimeString().slice(0, 8)}（${live.src}）` + (trading ? '（交易中，60秒自动刷新）' : '（非交易时段）');
   } catch (e) {
-    useArchive();
-    $('mstat').textContent = window.SNAP ? `历史快照（${window.SNAP} 收盘）` : '实时接口不可用，展示归档数据';
+    const isToday = useArchive();
+    $('mstat').textContent = window.SNAP ? `历史快照（${window.SNAP} 收盘）`
+      : isToday ? `实时接口不可用，展示构建时快照（${B.mtoday.date} ${B.mtoday.asof}）` : '实时接口不可用，展示归档数据';
   }
   renderLive();
 }

@@ -4,7 +4,7 @@
 数据源
 - 份额：东方财富妙想 MCP（mx_fund_finance_data「场内流通份额」，经 WorkBuddy 本地连接器代理调用）
 - 日线成交额/收盘价：腾讯行情 newfqkline（不复权）
-- 分钟成交额：东方财富 push2 trends2（ndays=5，逐日归档，滚动积累近20日）
+- 分钟成交额：东方财富 push2 trends2（ndays=5，逐日归档，滚动积累近20日）；东财失败时改用腾讯分钟（仅当日）
 - 宽基ETF名单与跟踪指数：东方财富 ETF 选择器（ETF_TYPE_CODE=002）
 - 宽基汇总校验：东方财富 RPT_ETF_NETINFLOW（宽基汇总）
 
@@ -196,7 +196,23 @@ def em_trends(secid, ndays=5):
     return d.get("trends") or [], d.get("preClose")
 
 
-def update_minutes():
+def tx_minute(sym):
+    """腾讯分钟（仅当日）：返回 (date, {hm: 分钟成交额元}, {hm: 价格}, 昨收)。数据为累计量，逐分钟差分。"""
+    d = get_json(f"https://web.ifzq.gtimg.cn/appstock/app/minute/query?code={sym}")["data"][sym]
+    raw = d["data"]["data"]; ds = d["data"]["date"]
+    date = f"{ds[:4]}-{ds[4:6]}-{ds[6:]}"
+    amt, px, prev = {}, {}, 0.0
+    for row in raw:
+        hhmm, p, _v, a = row.split(" ")
+        hm = hhmm[:2] + ":" + hhmm[2:]
+        a = float(a)
+        if hm != "13:00":  # 腾讯 13:00 为午间占位，与 11:30 累计相同
+            amt[hm] = max(a - prev, 0.0); px[hm] = float(p)
+        prev = a
+    return date, amt, px, float(d["qt"][sym][4])
+
+
+def _minutes_em():
     secids = [("1." if mkt(c) == "sh" else "0.") + c for c in KEY_CODES]
     with ThreadPoolExecutor(8) as ex:
         res = list(ex.map(em_trends, secids))
@@ -213,15 +229,48 @@ def update_minutes():
         ts, close, _ = t.split(",")
         d, hm = ts.split(" ")
         idx_map.setdefault(d, {})[hm] = float(close)
+    if not days or not idx_map:
+        raise RuntimeError("东财分时返回为空")
+    return days, idx_map
+
+
+def _minutes_tx():
+    syms = [mkt(c) + c for c in KEY_CODES]
+    with ThreadPoolExecutor(8) as ex:
+        res = list(ex.map(tx_minute, syms))
+    d0, _, ipx, _ = tx_minute("sh000001")
+    days = {}
+    for d, amt, _px, _pc in res:
+        if d != d0:
+            continue  # 停牌/日期不一致的不并入
+        for hm, a in amt.items():
+            days.setdefault(d, {}).setdefault(hm, 0.0)
+            days[d][hm] += a
+    return days, {d0: ipx}
+
+
+def update_minutes():
+    """归档分钟数据；返回当天盘中记录（盘中不落盘，仅放入 board.json 的 mtoday 供页面兜底）。"""
+    try:
+        days, idx_map = _minutes_em()
+        src = "东财"
+    except Exception as e:
+        print("   东财分时失败", e, "→ 改用腾讯分钟")
+        days, idx_map = _minutes_tx()
+        src = "腾讯"
     today = dt.date.today().isoformat()
     now_hm = dt.datetime.now().strftime("%H:%M")
+    mtoday = None
     for d, mm in days.items():
-        if d == today and now_hm < "15:01":
-            continue  # 盘中不归档当天
         times = sorted(mm)
         rec = {"date": d, "t": times, "amt": [round(mm[t] / 1e8, 4) for t in times],
                "idx": [idx_map.get(d, {}).get(t) for t in times]}
+        if d == today and now_hm < "15:01":
+            mtoday = {**rec, "asof": now_hm, "src": src}
+            continue  # 盘中不归档当天
         json.dump(rec, open(os.path.join(MIN_DIR, f"{d}.json"), "w"), separators=(",", ":"))
+    print(f"   分钟来源 {src}，日期 {sorted(days)}" + (f"，当日盘中截至 {now_hm}" if mtoday else ""))
+    return mtoday
 
 
 # ---------------- 主流程 ----------------
@@ -410,8 +459,9 @@ def main(full=False):
 
     # 分钟
     print("5) 分钟归档")
+    mtoday = None
     try:
-        update_minutes()
+        mtoday = update_minutes()
     except Exception as e:
         print("   分钟失败", e)
     mfiles = sorted(f for f in os.listdir(MIN_DIR) if f.endswith(".json"))
@@ -496,6 +546,7 @@ def main(full=False):
         "minute": {"grid": grid, "avg_cum": avg_cum, "avg_n": len(recent)},
         "cases": cases,
         "mraw": minutes[-20:],
+        "mtoday": mtoday,
         "names": {c: n for c, n, _ in KEY20},
     }
     save("board.json", out)
