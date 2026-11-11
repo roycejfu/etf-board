@@ -131,8 +131,16 @@ def selector_shares():
 
 
 def index_kline():
-    d = get_json("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000001,day,2023-09-01,2030-12-31,2000,")["data"]["sh000001"]["day"]
-    return {x[0]: float(x[2]) for x in d}
+    # 2026-11-11：web.ifzq.gtimg.cn/fqkline 被腾讯 WAF 拦截（HTTP 501），改走 proxy.finance.qq.com/newfqkline，旧接口留作备用
+    try:
+        d = get_json("https://proxy.finance.qq.com/ifzqgtimg/appstock/app/newfqkline/get?param=sh000001,day,,,2000,")["data"]["sh000001"]
+        arr = d.get("day") or d.get("qfqday") or []
+        if not arr:
+            raise ValueError("empty")
+    except Exception as e:
+        print("   指数日线(proxy) 失败，回退 web.ifzq:", e)
+        arr = get_json("https://web.ifzq.gtimg.cn/appstock/app/fqkline/get?param=sh000001,day,2023-09-01,2030-12-31,2000,")["data"]["sh000001"]["day"]
+    return {x[0]: float(x[2]) for x in arr if x[0] >= "2023-09-01"}
 
 
 # ---------------- 份额（妙想） ----------------
